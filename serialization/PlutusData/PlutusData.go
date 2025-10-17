@@ -13,7 +13,7 @@ import (
 	"github.com/SundaeSwap-finance/apollo/serialization"
 	"github.com/SundaeSwap-finance/apollo/serialization/Address"
 
-	"github.com/fxamacker/cbor/v2"
+	"github.com/Salvionied/cbor/v2"
 
 	"golang.org/x/crypto/blake2b"
 )
