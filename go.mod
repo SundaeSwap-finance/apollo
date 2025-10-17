@@ -14,7 +14,7 @@ require (
 	github.com/aws/aws-sdk-go v1.55.6 // indirect
 	github.com/btcsuite/btcutil v1.0.2 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
