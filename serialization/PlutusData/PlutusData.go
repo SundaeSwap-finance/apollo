@@ -1422,6 +1422,11 @@ func (pd *PlutusData) UnmarshalCBOR(value []uint8) error {
 			pd.TagNr = ok.Number
 			pd.PlutusDataType = PlutusBytes
 			pd.Value = content
+		case int64:
+			// Negative integers that fit in int64
+			pd.PlutusDataType = PlutusBigInt
+			pd.Value = *big.NewInt(content)
+			pd.TagNr = 0
 		case big.Int:
 			// Big integer encoded with CBOR tag 2 (positive) or 3 (negative)
 			pd.PlutusDataType = PlutusBigInt
@@ -1465,6 +1470,12 @@ func (pd *PlutusData) UnmarshalCBOR(value []uint8) error {
 		case uint64:
 			pd.PlutusDataType = PlutusInt
 			pd.Value = v
+			pd.TagNr = 0
+		case int64:
+			// Negative integers that fit in int64 are decoded as int64 by cbor
+			// Store as big.Int for consistency with larger negative numbers
+			pd.PlutusDataType = PlutusBigInt
+			pd.Value = *big.NewInt(v)
 			pd.TagNr = 0
 		case big.Int:
 			pd.PlutusDataType = PlutusBigInt
