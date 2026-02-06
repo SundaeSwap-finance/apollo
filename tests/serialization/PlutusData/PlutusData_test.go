@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/Salvionied/cbor/v2"
@@ -323,5 +324,186 @@ func TestRoundTripDefiniteDatum(t *testing.T) {
 		fmt.Println(hex.EncodeToString(datumBytes))
 		fmt.Println(hex.EncodeToString(newBytes))
 		t.Error("failed roundtrip")
+	}
+}
+
+// TestBigIntRoundTrip tests that big integers (> uint64 max) are correctly
+// marshaled and unmarshaled. This is critical for stableswap SumInvariant values.
+func TestBigIntRoundTrip(t *testing.T) {
+	// Create a big integer larger than uint64 max (18446744073709551615)
+	// This is the SumInvariant value from production: 1000831573897326959589221
+	bigVal := new(big.Int)
+	bigVal.SetString("1000831573897326959589221", 10)
+
+	// Encode as CBOR
+	encoded, err := cbor.Marshal(bigVal)
+	if err != nil {
+		t.Fatalf("Failed to marshal big int: %v", err)
+	}
+
+	// Verify it's encoded as a CBOR bignum (tag 2)
+	// c2 = tag 2 (positive bignum), followed by byte string
+	if encoded[0] != 0xc2 {
+		t.Errorf("Expected CBOR tag 2 (0xc2), got 0x%02x", encoded[0])
+	}
+
+	t.Logf("Encoded big int: %s", hex.EncodeToString(encoded))
+
+	// Unmarshal into PlutusData
+	var pd PlutusData.PlutusData
+	if err := cbor.Unmarshal(encoded, &pd); err != nil {
+		t.Fatalf("Failed to unmarshal into PlutusData: %v", err)
+	}
+
+	// Verify the type is PlutusBigInt
+	if pd.PlutusDataType != PlutusData.PlutusBigInt {
+		t.Errorf("Expected PlutusBigInt type, got %v", pd.PlutusDataType)
+	}
+
+	// Verify the value is correct
+	decodedBigInt, ok := pd.Value.(big.Int)
+	if !ok {
+		t.Fatalf("Value is not big.Int, got %T", pd.Value)
+	}
+
+	if decodedBigInt.Cmp(bigVal) != 0 {
+		t.Errorf("Big int value mismatch: got %s, expected %s", decodedBigInt.String(), bigVal.String())
+	}
+
+	// Re-encode and verify round-trip
+	reencoded, err := cbor.Marshal(&pd)
+	if err != nil {
+		t.Fatalf("Failed to re-marshal PlutusData: %v", err)
+	}
+
+	if !bytes.Equal(encoded, reencoded) {
+		t.Errorf("Round-trip failed: original %s, reencoded %s",
+			hex.EncodeToString(encoded), hex.EncodeToString(reencoded))
+	}
+
+	t.Logf("Successfully round-tripped big int: %s", bigVal.String())
+}
+
+// TestNegativeBigIntRoundTrip tests that negative big integers are correctly handled.
+// CBOR uses tag 3 for negative bignums.
+func TestNegativeBigIntRoundTrip(t *testing.T) {
+	// Create a negative big integer larger than int64 min
+	bigVal := new(big.Int)
+	bigVal.SetString("-1000831573897326959589221", 10)
+
+	// Encode as CBOR
+	encoded, err := cbor.Marshal(bigVal)
+	if err != nil {
+		t.Fatalf("Failed to marshal negative big int: %v", err)
+	}
+
+	// Verify it's encoded as a CBOR negative bignum (tag 3)
+	// c3 = tag 3 (negative bignum), followed by byte string
+	if encoded[0] != 0xc3 {
+		t.Errorf("Expected CBOR tag 3 (0xc3), got 0x%02x", encoded[0])
+	}
+
+	t.Logf("Encoded negative big int: %s", hex.EncodeToString(encoded))
+
+	// Unmarshal into PlutusData
+	var pd PlutusData.PlutusData
+	if err := cbor.Unmarshal(encoded, &pd); err != nil {
+		t.Fatalf("Failed to unmarshal into PlutusData: %v", err)
+	}
+
+	// Verify the type is PlutusBigInt
+	if pd.PlutusDataType != PlutusData.PlutusBigInt {
+		t.Errorf("Expected PlutusBigInt type, got %v", pd.PlutusDataType)
+	}
+
+	// Verify the value is correct
+	decodedBigInt, ok := pd.Value.(big.Int)
+	if !ok {
+		t.Fatalf("Value is not big.Int, got %T", pd.Value)
+	}
+
+	if decodedBigInt.Cmp(bigVal) != 0 {
+		t.Errorf("Negative big int value mismatch: got %s, expected %s", decodedBigInt.String(), bigVal.String())
+	}
+
+	// Re-encode and verify round-trip
+	reencoded, err := cbor.Marshal(&pd)
+	if err != nil {
+		t.Fatalf("Failed to re-marshal PlutusData: %v", err)
+	}
+
+	if !bytes.Equal(encoded, reencoded) {
+		t.Errorf("Round-trip failed: original %s, reencoded %s",
+			hex.EncodeToString(encoded), hex.EncodeToString(reencoded))
+	}
+
+	t.Logf("Successfully round-tripped negative big int: %s", bigVal.String())
+}
+
+// TestSmallNegativeInt tests that small negative integers (fitting in int64) work correctly.
+func TestSmallNegativeInt(t *testing.T) {
+	// Small negative number that fits in int64
+	val := int64(-12345678)
+
+	// Encode as CBOR
+	encoded, err := cbor.Marshal(val)
+	if err != nil {
+		t.Fatalf("Failed to marshal negative int: %v", err)
+	}
+
+	t.Logf("Encoded small negative int: %s", hex.EncodeToString(encoded))
+
+	// Unmarshal into PlutusData
+	var pd PlutusData.PlutusData
+	if err := cbor.Unmarshal(encoded, &pd); err != nil {
+		t.Fatalf("Failed to unmarshal into PlutusData: %v", err)
+	}
+
+	t.Logf("PlutusDataType: %v, Value: %v (%T)", pd.PlutusDataType, pd.Value, pd.Value)
+
+	// Re-encode and verify round-trip
+	reencoded, err := cbor.Marshal(&pd)
+	if err != nil {
+		t.Fatalf("Failed to re-marshal PlutusData: %v", err)
+	}
+
+	if !bytes.Equal(encoded, reencoded) {
+		t.Errorf("Round-trip failed: original %s, reencoded %s",
+			hex.EncodeToString(encoded), hex.EncodeToString(reencoded))
+	}
+
+	t.Logf("Successfully round-tripped small negative int: %d", val)
+}
+
+// TestStablePoolDatumWithLargeSumInvariant tests parsing a real stableswap datum
+// with a SumInvariant that exceeds uint64 max.
+func TestStablePoolDatumWithLargeSumInvariant(t *testing.T) {
+	// This is the datum from production that caused the bug
+	// SumInvariant is 1000831573897326959589221 (encoded as c24ad3ef3036c2ae0594f765)
+	dataHex := "d8799f581c227d7fdbb88788d4140c997682e51c9d968fc211ef742d7b09e216f89f9f581cc48cbb3d5e57ed56e276bc45f99ab39abe94e6cd7ac39fb402da47ad480014df105553444dff9f581cfe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae4564455534441ffff1b000000a6734ea3fd9f0505ff9f0000ffd8799fd8799f581c55bf4118b01e1c794647db9375ffc873e435d737007b2adbc48cdbaaffff009f1a03b14a060000ff1901f4c24ad3ef3036c2ae0594f765d8799fd8799f581c55bf4118b01e1c794647db9375ffc873e435d737007b2adbc48cdbaaffffff"
+	data, err := hex.DecodeString(dataHex)
+	if err != nil {
+		t.Fatalf("Failed to decode hex: %v", err)
+	}
+
+	// Unmarshal into PlutusData
+	var pd PlutusData.PlutusData
+	if err := cbor.Unmarshal(data, &pd); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	// Re-encode
+	reencoded, err := cbor.Marshal(&pd)
+	if err != nil {
+		t.Fatalf("Failed to re-marshal: %v", err)
+	}
+
+	// Verify round-trip
+	if !bytes.Equal(data, reencoded) {
+		t.Logf("Original:  %s", hex.EncodeToString(data))
+		t.Logf("Reencoded: %s", hex.EncodeToString(reencoded))
+		t.Error("Round-trip failed for stableswap datum with large SumInvariant")
+	} else {
+		t.Log("Successfully round-tripped stableswap datum with large SumInvariant")
 	}
 }
