@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/Salvionied/cbor/v2"
@@ -311,9 +310,9 @@ func (b *Apollo) buildFakeWitnessSet() TransactionWitnessSet.TransactionWitnessS
 	}
 }
 
-func (b *Apollo) scriptDataHash() *serialization.ScriptDataHash {
+func (b *Apollo) scriptDataHash() (*serialization.ScriptDataHash, error) {
 	if len(b.datums) == 0 && len(b.redeemers) == 0 {
-		return nil
+		return nil, nil
 	}
 	witnessSet := b.buildWitnessSet()
 	cost_models := map[cbor.Marshaler]cbor.Marshaler{}
@@ -329,13 +328,13 @@ func (b *Apollo) scriptDataHash() *serialization.ScriptDataHash {
 	//redeemer_bytes, err := cbor.Marshal(Redeemer.Redeemers{Redeemers: redeemers})
 	redeemer_bytes, err := cbor.Marshal(redeemers)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	var datum_bytes []byte
 	if datums.Len() > 0 {
 		datum_bytes, err = cbor.Marshal(datums)
 		if err != nil {
-			log.Fatal(err)
+			return nil, fmt.Errorf("error marshalling CBOR: %v", err)
 		}
 	} else {
 		datum_bytes = []byte{}
@@ -353,11 +352,11 @@ func (b *Apollo) scriptDataHash() *serialization.ScriptDataHash {
 	}
 	cost_model_bytes, err = cbor.Marshal(cost_models)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("error marshalling cost models: %v", err)
 	}
 	total_bytes := append(redeemer_bytes, datum_bytes...)
 	total_bytes = append(total_bytes, cost_model_bytes...)
-	return &serialization.ScriptDataHash{Payload: serialization.Blake2bHash(total_bytes)}
+	return &serialization.ScriptDataHash{Payload: serialization.Blake2bHash(total_bytes)}, nil
 }
 
 func (b *Apollo) getMints() MultiAsset.MultiAsset[int64] {
@@ -385,7 +384,7 @@ func (b *Apollo) MintAssetsWithRedeemer(mintUnit Unit, redeemerData PlutusData.P
 	return b
 }
 
-func (b *Apollo) buildTxBody() TransactionBody.TransactionBody {
+func (b *Apollo) buildTxBody() (TransactionBody.TransactionBody, error) {
 	inputs := make([]TransactionInput.TransactionInput, 0)
 	for _, utxo := range b.preselectedUtxos {
 		inputs = append(inputs, utxo.Input)
@@ -394,7 +393,10 @@ func (b *Apollo) buildTxBody() TransactionBody.TransactionBody {
 	for _, utxo := range b.collaterals {
 		collaterals = append(collaterals, utxo.Input)
 	}
-	dataHash := b.scriptDataHash()
+	dataHash, err := b.scriptDataHash()
+	if err != nil {
+		return TransactionBody.TransactionBody{}, err
+	}
 	scriptDataHash := make([]byte, 0)
 	if dataHash != nil {
 		scriptDataHash = dataHash.Payload
@@ -423,11 +425,14 @@ func (b *Apollo) buildTxBody() TransactionBody.TransactionBody {
 		txb.TotalCollateral = b.totalCollateral
 		txb.CollateralReturn = b.collateralReturn
 	}
-	return txb
+	return txb, nil
 }
 
 func (b *Apollo) buildFullFakeTx() (*Transaction.Transaction, error) {
-	txBody := b.buildTxBody()
+	txBody, err := b.buildTxBody()
+	if err != nil {
+		return nil, err
+	}
 	if txBody.Fee == 0 {
 		txBody.Fee = int64(b.Context.MaxTxFee())
 	}
@@ -706,7 +711,10 @@ func (b *Apollo) Complete() (*Apollo, []byte, error) {
 		return b, tx_cbor, err
 	}
 	//FINALIZE TX
-	body := b.buildTxBody()
+	body, err := b.buildTxBody()
+	if err != nil {
+		return b, tx_cbor, err
+	}
 	witnessSet := b.buildWitnessSet()
 	b.tx = &Transaction.Transaction{TransactionBody: body, TransactionWitnessSet: witnessSet, AuxiliaryData: b.auxiliaryData, Valid: true}
 	return b, nil, nil
@@ -1009,8 +1017,10 @@ func (b *Apollo) SetWalletAsChangeAddress() *Apollo {
 	switch b.Context.(type) {
 	case *BlockFrostChainContext.BlockFrostChainContext:
 
-		utxos := b.Context.Utxos(*b.wallet.GetAddress())
-		b = b.AddLoadedUTxOs(utxos...)
+		utxos, err := b.Context.Utxos(*b.wallet.GetAddress())
+		if err != nil {
+			b = b.AddLoadedUTxOs(utxos...)
+		}
 	default:
 	}
 	b.inputAddresses = append(b.inputAddresses, *b.wallet.GetAddress())

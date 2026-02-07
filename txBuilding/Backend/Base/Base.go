@@ -188,7 +188,7 @@ type ChainContext interface {
 	Epoch() int
 	MaxTxFee() int
 	LastBlockSlot() int
-	Utxos(address Address.Address) []UTxO.UTxO
+	Utxos(address Address.Address) ([]UTxO.UTxO, error)
 	SubmitTx(Transaction.Transaction) (serialization.TransactionId, error)
 	EvaluateTx([]uint8) (map[string]Redeemer.ExecutionUnits, error)
 	EvaluateTxWithAdditionalUtxos([]uint8, []UTxO.UTxO) (map[string]Redeemer.ExecutionUnits, error)
