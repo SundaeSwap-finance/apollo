@@ -119,10 +119,10 @@ func (mcc *MaestroChainContext) MaxTxFee() int {
 	return Base.Fee(mcc, protocol_param.MaxTxSize, maxTxExSteps, maxTxExMem)
 }
 
-func (mcc *MaestroChainContext) Utxos(address Address.Address) []UTxO.UTxO {
+func (mcc *MaestroChainContext) Utxos(address Address.Address) ([]UTxO.UTxO, error) {
 	utxos := make([]UTxO.UTxO, 0)
 	//TODO
-	return utxos
+	return utxos, nil
 }
 
 func (mcc *MaestroChainContext) SubmitTx(tx Transaction.Transaction) (serialization.TransactionId, error) {

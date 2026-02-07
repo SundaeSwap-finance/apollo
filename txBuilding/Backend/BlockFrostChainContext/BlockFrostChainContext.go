@@ -144,7 +144,7 @@ func (bfc *BlockFrostChainContext) LatestEpoch() Base.Epoch {
 		return res
 	}
 }
-func (bfc *BlockFrostChainContext) AddressUtxos(address string, gather bool) []Base.AddressUTXO {
+func (bfc *BlockFrostChainContext) AddressUtxos(address string, gather bool) ([]Base.AddressUTXO, error) {
 	if gather {
 		var i = 1
 		result := make([]Base.AddressUTXO, 0)
@@ -153,7 +153,7 @@ func (bfc *BlockFrostChainContext) AddressUtxos(address string, gather bool) []B
 			req.Header.Set("project_id", bfc._projectId)
 			res, err := bfc.client.Do(req)
 			if err != nil {
-				log.Fatal(err, "REQUEST PROTOCOL")
+				return result, fmt.Errorf("REQUEST PROTOCOL: %v", err)
 			}
 			body, err := ioutil.ReadAll(res.Body)
 			var response []Base.AddressUTXO
@@ -162,26 +162,26 @@ func (bfc *BlockFrostChainContext) AddressUtxos(address string, gather bool) []B
 				break
 			}
 			if err != nil {
-				log.Fatal(err, "UNMARSHAL PROTOCOL")
+				return result, fmt.Errorf("UNMARSHAL PROTOCOL: %v", err)
 			}
 			result = append(result, response...)
 			i++
 		}
-		return result
+		return result, nil
 	} else {
 		req, _ := http.NewRequest("GET", fmt.Sprintf("%s/v0/addresses/%s/utxos", bfc._baseUrl, address), nil)
 		req.Header.Set("project_id", bfc._projectId)
 		res, err := bfc.client.Do(req)
+		var response []Base.AddressUTXO
 		if err != nil {
-			log.Fatal(err, "REQUEST PROTOCOL")
+			return response, fmt.Errorf("REQUEST PROTOCOL: %v", err)
 		}
 		body, err := ioutil.ReadAll(res.Body)
-		var response []Base.AddressUTXO
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			log.Fatal(err, "UNMARSHAL PROTOCOL")
+			return response, fmt.Errorf("UNMARSHAL PROTOCOL: %v", err)
 		}
-		return response
+		return response, nil
 	}
 }
 
@@ -292,9 +292,12 @@ func (bfc *BlockFrostChainContext) MaxTxFee() int {
 	return Base.Fee(bfc, protocol_param.MaxTxSize, maxTxExSteps, maxTxExMem)
 }
 
-func (bfc *BlockFrostChainContext) Utxos(address Address.Address) []UTxO.UTxO {
-	results := bfc.AddressUtxos(address.String(), true)
+func (bfc *BlockFrostChainContext) Utxos(address Address.Address) ([]UTxO.UTxO, error) {
+	results, err := bfc.AddressUtxos(address.String(), true)
 	utxos := make([]UTxO.UTxO, 0)
+	if err != nil {
+		return utxos, err
+	}
 	for _, result := range results {
 		decodedTxId, _ := hex.DecodeString(result.TxHash)
 		tx_in := TransactionInput.TransactionInput{TransactionId: decodedTxId, Index: result.OutputIndex}
@@ -305,13 +308,13 @@ func (bfc *BlockFrostChainContext) Utxos(address Address.Address) []UTxO.UTxO {
 			if item.Unit == "lovelace" {
 				amount, err := strconv.Atoi(item.Quantity)
 				if err != nil {
-					log.Fatal(err)
+					return utxos, err
 				}
 				lovelace_amount += amount
 			} else {
 				asset_quantity, err := strconv.ParseInt(item.Quantity, 10, 64)
 				if err != nil {
-					log.Fatal(err)
+					return utxos, err
 				}
 				policy_id := Policy.PolicyId{Value: item.Unit[:56]}
 				asset_name := *AssetName.NewAssetNameFromHexString(item.Unit[56:])
@@ -338,12 +341,12 @@ func (bfc *BlockFrostChainContext) Utxos(address Address.Address) []UTxO.UTxO {
 		if result.InlineDatum != "" {
 			decoded, err := hex.DecodeString(result.InlineDatum)
 			if err != nil {
-				log.Fatal(err)
+				return utxos, err
 			}
 			var x PlutusData.PlutusData
 			err = cbor.Unmarshal(decoded, &x)
 			if err != nil {
-				log.Fatal(err)
+				return utxos, err
 			}
 			l := PlutusData.DatumOptionInline(&x)
 			tx_out = TransactionOutput.TransactionOutput{IsPostAlonzo: true,
@@ -361,7 +364,7 @@ func (bfc *BlockFrostChainContext) Utxos(address Address.Address) []UTxO.UTxO {
 		}
 		utxos = append(utxos, UTxO.UTxO{Input: tx_in, Output: tx_out})
 	}
-	return utxos
+	return utxos, nil
 }
 func (bfc *BlockFrostChainContext) SpecialSubmitTx(tx Transaction.Transaction, logger chan string) serialization.TransactionId {
 	txBytes, _ := cbor.Marshal(tx)
@@ -409,13 +412,13 @@ func (bfc *BlockFrostChainContext) SubmitTx(tx Transaction.Transaction) (seriali
 			req.Header.Set("Content-Type", "application/cbor")
 			res, err := bfc.client.Do(req)
 			if err != nil {
-				log.Fatal(err, "REQUEST PROTOCOL")
+				return serialization.TransactionId{}, fmt.Errorf("REQUEST PROTOCOL: %v", err)
 			}
 			body, err := ioutil.ReadAll(res.Body)
 			var response any
 			err = json.Unmarshal(body, &response)
 			if err != nil {
-				log.Fatal(err, "UNMARSHAL PROTOCOL")
+				return serialization.TransactionId{}, fmt.Errorf("UNMARSHAL PROTOCOL: %v", err)
 			}
 		}
 	}
@@ -424,7 +427,7 @@ func (bfc *BlockFrostChainContext) SubmitTx(tx Transaction.Transaction) (seriali
 	req.Header.Set("Content-Type", "application/cbor")
 	res, err := bfc.client.Do(req)
 	if err != nil {
-		log.Fatal(err, "REQUEST PROTOCOL")
+		return serialization.TransactionId{}, fmt.Errorf("REQUEST PROTOCOL: %v", err)
 	}
 	body, err := ioutil.ReadAll(res.Body)
 	var response any

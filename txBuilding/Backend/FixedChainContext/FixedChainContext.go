@@ -111,7 +111,7 @@ func (f FixedChainContext) GetUtxoFromRef(txHash string, txIndex int) (UTxO.UTxO
 	return UTxO.UTxO{}, nil
 }
 
-func (f FixedChainContext) Utxos(address Address.Address) []UTxO.UTxO {
+func (f FixedChainContext) Utxos(address Address.Address) ([]UTxO.UTxO, error) {
 	tx_in1 := TransactionInput.TransactionInput{
 		TransactionId: []byte{0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01},
 		Index:         0,
@@ -123,7 +123,7 @@ func (f FixedChainContext) Utxos(address Address.Address) []UTxO.UTxO {
 
 	tx_out1 := TransactionOutput.SimpleTransactionOutput(address, Value.PureLovelaceValue(5000000))
 	tx_out2 := TransactionOutput.SimpleTransactionOutput(address, Value.SimpleValue(6000000, MultiAsset.MultiAsset[int64]{Policy.PolicyId{Value: "11111111111111111111111111111111111111111111111111111111"}: Asset.Asset[int64]{AssetName.NewAssetNameFromString("Token1"): 1, AssetName.NewAssetNameFromString("Token2"): 2}}))
-	return []UTxO.UTxO{{Input: tx_in1, Output: tx_out1}, {Input: tx_in2, Output: tx_out2}}
+	return []UTxO.UTxO{{Input: tx_in1, Output: tx_out1}, {Input: tx_in2, Output: tx_out2}}, nil
 }
 
 func (f FixedChainContext) SubmitTx(tx Transaction.Transaction) (serialization.TransactionId, error) {
