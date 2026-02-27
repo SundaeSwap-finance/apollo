@@ -129,31 +129,29 @@ func value_ApolloToOgmigo(v Value.AlonzoValue) shared.Value {
 	}
 }
 
-func datum_OgmigoToApollo(d string, dh string) *PlutusData.DatumOption {
+func datum_OgmigoToApollo(d string, dh string) (*PlutusData.DatumOption, error) {
 	if d != "" {
 		datumBytes, err := hex.DecodeString(d)
 		if err != nil {
-			log.Printf("%v OgmiosChainContext: Failed to decode datum from hex: %v", err, d)
-			return nil
+			return nil, fmt.Errorf("Failed to decode datum from hex %v: %v", d, err)
 		}
 		var pd PlutusData.PlutusData
 		err = cbor.Unmarshal(datumBytes, &pd)
 		if err != nil {
-			log.Printf("%v OgmiosChainContext: datum is not valid plutus data: %v", err, d)
-			return nil
+			return nil, fmt.Errorf("Datum is not valid plutus data %v: %v", d, err)
 		}
 		res := PlutusData.DatumOptionInline(&pd)
-		return &res
+		return &res, nil
 	}
 	if dh != "" {
 		datumHashBytes, err := hex.DecodeString(dh)
 		if err != nil {
-			log.Fatal(err, "OgmiosChainContext: Failed to decode datum hash from hex: %v", dh)
+			return nil, fmt.Errorf("Failed to decode datum hash from hex %v: %v", dh, err)
 		}
 		res := PlutusData.DatumOptionHash(datumHashBytes)
-		return &res
+		return &res, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func datum_ApolloToOgmigo(pd *PlutusData.DatumOption) (string, string, error) {
@@ -210,20 +208,23 @@ func scriptRef_ApolloToOgmigo(script *PlutusData.ScriptRef) (json.RawMessage, er
 	return enc, nil
 }
 
-func Utxo_OgmigoToApollo(u shared.Utxo) UTxO.UTxO {
+func Utxo_OgmigoToApollo(u shared.Utxo) (UTxO.UTxO, error) {
 	txHashRaw, err := hex.DecodeString(u.Transaction.ID)
 	if err != nil {
-		log.Fatal(err, "Failed to decode ogmigo transaction ID")
+		return UTxO.UTxO{}, fmt.Errorf("Failed to decode ogmigo transaction ID: %v", err)
 	}
 	addr, err := Address.DecodeAddress(u.Address)
 	if err != nil {
-		log.Fatal(err, "Failed to decode ogmigo address")
+		return UTxO.UTxO{}, fmt.Errorf("Failed to decode ogmigo address: %v", err)
 	}
-	datum := datum_OgmigoToApollo(u.Datum, u.DatumHash)
+	datum, err := datum_OgmigoToApollo(u.Datum, u.DatumHash)
+	if err != nil {
+		return UTxO.UTxO{}, fmt.Errorf("Failed to decode ogmigo datum: %v", err)
+	}
 	v := value_OgmigoToApollo(u.Value)
 	scriptRef, err := scriptRef_OgmigoToApollo(u.Script)
 	if err != nil {
-		log.Fatal(err, "Failed to convert script ref from ogmigo")
+		return UTxO.UTxO{}, fmt.Errorf("Failed to convert script ref from ogmigo: %v", err)
 	}
 	return UTxO.UTxO{
 		Input: TransactionInput.TransactionInput{
@@ -240,18 +241,18 @@ func Utxo_OgmigoToApollo(u shared.Utxo) UTxO.UTxO {
 			PreAlonzo:    TransactionOutput.TransactionOutputShelley{},
 			IsPostAlonzo: true,
 		},
-	}
+	}, nil
 }
 
-func Utxo_ApolloToOgmigo(u UTxO.UTxO) shared.Utxo {
+func Utxo_ApolloToOgmigo(u UTxO.UTxO) (shared.Utxo, error) {
 	amount := value_ApolloToOgmigo(u.Output.GetValue().ToAlonzoValue())
 	datum, datumHash, err := datum_ApolloToOgmigo(u.Output.GetDatumOption())
 	if err != nil {
-		log.Fatal(err, "Failed to convert apollo datum object to ogmigo format")
+		return shared.Utxo{}, fmt.Errorf("Failed to convert apollo datum object to ogmigo format: %v", err)
 	}
 	scriptRef, err := scriptRef_ApolloToOgmigo(u.Output.GetScriptRef())
 	if err != nil {
-		log.Fatal(err, "Failed to convert apollo script ref to ogmigo format")
+		return shared.Utxo{}, fmt.Errorf("Failed to convert apollo script ref to ogmigo format: %v", err)
 	}
 	return shared.Utxo{
 		Transaction: shared.UtxoTxID{
@@ -263,7 +264,7 @@ func Utxo_ApolloToOgmigo(u UTxO.UTxO) shared.Utxo {
 		Datum:     datum,
 		DatumHash: datumHash,
 		Script:    scriptRef,
-	}
+	}, nil
 }
 
 func (occ *OgmiosChainContext) GetUtxoFromRef(txHash string, index int) (UTxO.UTxO, error) {
@@ -280,8 +281,7 @@ func (occ *OgmiosChainContext) GetUtxoFromRef(txHash string, index int) (UTxO.UT
 	if len(utxos) == 0 {
 		return UTxO.UTxO{}, fmt.Errorf("Could not fetch utxo: %v#%v", txHash, index)
 	} else {
-		apolloUtxo := Utxo_OgmigoToApollo(utxos[0])
-		return apolloUtxo, nil
+		return Utxo_OgmigoToApollo(utxos[0])
 	}
 }
 
@@ -897,7 +897,11 @@ func (occ *OgmiosChainContext) evaluateTx(tx []byte, additionalUtxos []UTxO.UTxO
 	ctx := context.Background()
 	var additionalUtxosOgmigo []shared.Utxo
 	for _, u := range additionalUtxos {
-		additionalUtxosOgmigo = append(additionalUtxosOgmigo, Utxo_ApolloToOgmigo(u))
+		utxo, err := Utxo_ApolloToOgmigo(u)
+		if err != nil {
+			return nil, fmt.Errorf("OgmiosChainContext: EvaluateTx: Error parsing UTXO: %v", utxo)
+		}
+		additionalUtxosOgmigo = append(additionalUtxosOgmigo, utxo)
 	}
 	eval, err := occ.ogmigo.EvaluateTxWithAdditionalUtxos(ctx, hex.EncodeToString(tx), additionalUtxosOgmigo)
 	if err != nil {

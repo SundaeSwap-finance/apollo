@@ -27,8 +27,14 @@ func TestRoundtripUtxo(t *testing.T) {
 		DatumHash: "",
 		Script:    nil,
 	}
-	apolloUtxo := Utxo_OgmigoToApollo(ogmigoUtxo)
-	roundtrip := Utxo_ApolloToOgmigo(apolloUtxo)
+	apolloUtxo, err := Utxo_OgmigoToApollo(ogmigoUtxo)
+	if err != nil {
+		t.Fatalf("Error parsing to apollo: %v", err)
+	}
+	roundtrip, err := Utxo_ApolloToOgmigo(apolloUtxo)
+	if err != nil {
+		t.Fatalf("Error parsing to ogmigo: %v", err)
+	}
 	if roundtrip.Transaction.ID != ogmigoUtxo.Transaction.ID {
 		t.Fatalf("Transaction IDs don't match: %v,%v", roundtrip.Transaction.ID, ogmigoUtxo.Transaction.ID)
 	}
