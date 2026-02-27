@@ -133,12 +133,14 @@ func datum_OgmigoToApollo(d string, dh string) *PlutusData.DatumOption {
 	if d != "" {
 		datumBytes, err := hex.DecodeString(d)
 		if err != nil {
-			log.Fatal(err, "OgmiosChainContext: Failed to decode datum from hex: %v", d)
+			log.Printf("%v OgmiosChainContext: Failed to decode datum from hex: %v", err, d)
+			return nil
 		}
 		var pd PlutusData.PlutusData
 		err = cbor.Unmarshal(datumBytes, &pd)
 		if err != nil {
-			log.Fatal(err, "OgmiosChainContext: datum is not valid plutus data: %v", d)
+			log.Printf("%v OgmiosChainContext: datum is not valid plutus data: %v", err, d)
+			return nil
 		}
 		res := PlutusData.DatumOptionInline(&pd)
 		return &res
