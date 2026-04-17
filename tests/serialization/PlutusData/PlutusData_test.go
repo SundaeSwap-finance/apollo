@@ -507,3 +507,124 @@ func TestStablePoolDatumWithLargeSumInvariant(t *testing.T) {
 		t.Log("Successfully round-tripped stableswap datum with large SumInvariant")
 	}
 }
+
+// decodeCostModelV1 parses the output of CostModelV1Encoding.MarshalCBOR
+// back into the integer sequence it wrapped.
+func decodeCostModelV1(t *testing.T, encoded []byte) []int {
+	t.Helper()
+	var inner []byte
+	if err := cbor.Unmarshal(encoded, &inner); err != nil {
+		t.Fatalf("outer bytestring unmarshal failed: %v", err)
+	}
+	if len(inner) < 2 || inner[0] != 0x9f || inner[len(inner)-1] != 0xff {
+		t.Fatalf("inner bytes not an indefinite-length CBOR array: %x", inner)
+	}
+	// Re-wrap as a definite-length array decode by swapping the indefinite
+	// markers for a definite-length header computed from the integer count,
+	// or just decode directly — the Salvionied/cbor library accepts
+	// indefinite arrays.
+	var out []int
+	if err := cbor.Unmarshal(inner, &out); err != nil {
+		t.Fatalf("inner array unmarshal failed: %v", err)
+	}
+	return out
+}
+
+func TestCostModelV1EncodingSmall(t *testing.T) {
+	// <24 entries: the outer bytestring header fits in one byte.
+	in := PlutusData.CostModel{1, 2, 3}
+	got, err := PlutusData.CostModelV1Encoding(in).MarshalCBOR()
+	if err != nil {
+		t.Fatalf("MarshalCBOR: %v", err)
+	}
+	// Bytestring of length 5 (9f 01 02 03 ff).
+	want, _ := hex.DecodeString("459f010203ff")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("small case bytes mismatch:\n got  %x\n want %x", got, want)
+	}
+	if decoded := decodeCostModelV1(t, got); !equalInts(decoded, []int(in)) {
+		t.Fatalf("round-trip mismatch: got %v want %v", decoded, []int(in))
+	}
+}
+
+func TestCostModelV1EncodingMedium(t *testing.T) {
+	// 24..255 entries: header is two bytes (0x58 <len>).
+	in := make(PlutusData.CostModel, 30)
+	for i := range in {
+		in[i] = i
+	}
+	got, err := PlutusData.CostModelV1Encoding(in).MarshalCBOR()
+	if err != nil {
+		t.Fatalf("MarshalCBOR: %v", err)
+	}
+	if got[0] != 0x58 {
+		t.Fatalf("expected 0x58-prefixed bytestring, got first byte %#x", got[0])
+	}
+	if decoded := decodeCostModelV1(t, got); !equalInts(decoded, []int(in)) {
+		t.Fatalf("round-trip mismatch: got %v want %v", decoded, []int(in))
+	}
+}
+
+func TestCostModelV1EncodingLarge(t *testing.T) {
+	// >=256 entries: header is three bytes (0x59 <len-hi> <len-lo>).
+	// The pre-patch CM.MarshalCBOR corrupted the length prefix at this size
+	// because it unconditionally overwrote partial[1] with 0x9f; this test
+	// guards against a regression to that behaviour.
+	in := make(PlutusData.CostModel, 332)
+	for i := range in {
+		in[i] = 100788 + i
+	}
+	got, err := PlutusData.CostModelV1Encoding(in).MarshalCBOR()
+	if err != nil {
+		t.Fatalf("MarshalCBOR: %v", err)
+	}
+	if got[0] != 0x59 {
+		t.Fatalf("expected 0x59-prefixed bytestring for 332-entry cost model, got first byte %#x", got[0])
+	}
+	if decoded := decodeCostModelV1(t, got); !equalInts(decoded, []int(in)) {
+		t.Fatalf("round-trip mismatch: len(got)=%d len(want)=%d", len(decoded), len(in))
+	}
+}
+
+func TestCostModelV2Passthrough(t *testing.T) {
+	// V2 and V3 now both encode as a plain definite-length CBOR array of
+	// ints in the order the chain context supplied. This test asserts the
+	// exact bytes for a small array and the round-trip for a large one.
+	in := PlutusData.CostModel{1, 2, 3}
+	got, err := PlutusData.CostModelV2(in).MarshalCBOR()
+	if err != nil {
+		t.Fatalf("MarshalCBOR: %v", err)
+	}
+	want, _ := hex.DecodeString("83010203")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("V2 small bytes mismatch:\n got  %x\n want %x", got, want)
+	}
+
+	large := make(PlutusData.CostModel, 332)
+	for i := range large {
+		large[i] = 100788 + i
+	}
+	gotLarge, err := PlutusData.CostModelV2(large).MarshalCBOR()
+	if err != nil {
+		t.Fatalf("MarshalCBOR large: %v", err)
+	}
+	var round []int
+	if err := cbor.Unmarshal(gotLarge, &round); err != nil {
+		t.Fatalf("round-trip unmarshal failed: %v", err)
+	}
+	if !equalInts(round, []int(large)) {
+		t.Fatalf("V2 large round-trip mismatch: len(got)=%d len(want)=%d", len(round), len(large))
+	}
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
