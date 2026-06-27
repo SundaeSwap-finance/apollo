@@ -1203,6 +1203,18 @@ func (pia PlutusIndefArray) MarshalCBOR() ([]uint8, error) {
 	return res, nil
 }
 
+// NonEmptySet wraps a PlutusIndefArray with CBOR tag 258 (d9 01 02), the
+// Cardano encoding for a non-empty set used in witness sets and script data hashes.
+type NonEmptySet PlutusIndefArray
+
+func (s NonEmptySet) MarshalCBOR() ([]byte, error) {
+	inner, err := PlutusIndefArray(s).MarshalCBOR()
+	if err != nil {
+		return nil, err
+	}
+	return cbor.RawTag{Number: 258, Content: inner}.MarshalCBOR()
+}
+
 type Datum struct {
 	PlutusDataType PlutusType
 	TagNr          uint64

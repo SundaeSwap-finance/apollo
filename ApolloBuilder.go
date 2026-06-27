@@ -332,7 +332,7 @@ func (b *Apollo) scriptDataHash() (*serialization.ScriptDataHash, error) {
 	}
 	var datum_bytes []byte
 	if datums.Len() > 0 {
-		datum_bytes, err = cbor.Marshal(datums)
+		datum_bytes, err = cbor.Marshal(PlutusData.NonEmptySet(datums))
 		if err != nil {
 			return nil, fmt.Errorf("error marshalling CBOR: %v", err)
 		}

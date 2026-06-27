@@ -15,7 +15,7 @@ type normaltws struct {
 	PlutusV1Script     []PlutusData.PlutusV1Script                     `cbor:"3,keyasint,omitempty"`
 	PlutusV2Script     []PlutusData.PlutusV2Script                     `cbor:"6,keyasint,omitempty"`
 	PlutusV3Script     []PlutusData.PlutusV3Script                     `cbor:"7,keyasint,omitempty"`
-	PlutusData         *PlutusData.PlutusIndefArray                    `cbor:"4,keyasint,omitempty"`
+	PlutusData         *PlutusData.NonEmptySet                         `cbor:"4,keyasint,omitempty"`
 	Redeemer           []Redeemer.Redeemer                             `cbor:"5,keyasint,omitempty"`
 }
 type TransactionWitnessSet struct {
@@ -56,6 +56,7 @@ func (tws *TransactionWitnessSet) MarshalCBOR() ([]byte, error) {
 		})
 	}
 
+	nes := PlutusData.NonEmptySet(tws.PlutusData)
 	return cbor.Marshal(normaltws{
 		VkeyWitnesses:      tws.VkeyWitnesses,
 		NativeScripts:      tws.NativeScripts,
@@ -63,7 +64,7 @@ func (tws *TransactionWitnessSet) MarshalCBOR() ([]byte, error) {
 		PlutusV1Script:     tws.PlutusV1Script,
 		PlutusV2Script:     tws.PlutusV2Script,
 		PlutusV3Script:     tws.PlutusV3Script,
-		PlutusData:         &tws.PlutusData,
+		PlutusData:         &nes,
 		Redeemer:           tws.Redeemer,
 	})
 }
