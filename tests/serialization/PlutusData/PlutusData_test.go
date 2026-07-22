@@ -307,6 +307,24 @@ func TestPlutusDataFromJson(t *testing.T) {
 
 }
 
+func TestRoundTripNestedConstrDatum(t *testing.T) {
+	var pd PlutusData.PlutusData
+	datumBytes, err := hex.DecodeString("d8799fd8799f581c4a9f827cdfe7036bf395c7d4304ea3fc1050c420282ac68cb8a1a7b5ffd8799fd8799f581c4a9f827cdfe7036bf395c7d4304ea3fc1050c420282ac68cb8a1a7b5ffd8799fd8799fd8799f581c1e376f232be5a1fa620c5a4b109b8587ec3142dd4876b6bd32ad0beeffffffffd87980d8799fd8799f581c4a9f827cdfe7036bf395c7d4304ea3fc1050c420282ac68cb8a1a7b5ffd8799fd8799fd8799f581c1e376f232be5a1fa620c5a4b109b8587ec3142dd4876b6bd32ad0beeffffffffd87980d8799f581cf5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c58208996cebb9511cf1e6584abd92667e26cf7034bfe805ac618e2e6a14992198873ffd905029f9fd8799fd8799f581cf5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c58208996cebb9511cf1e6584abd92667e26cf7034bfe805ac618e2e6a14992198873ffd87980ffd8799fd8799f581cf5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c5820e74c52975908a612d5ce68327040d449aae99f8b463bb6de046a1b23c5713169ffd87a80ffffd87a9f00ff1a00030b8bff1a001e8480d87a80ff")
+	if err != nil {
+		t.Fatalf("couldn't decode hex: %v", err)
+	}
+	if err := cbor.Unmarshal(datumBytes, &pd); err != nil {
+		t.Fatalf("couldn't decode: %v", err)
+	}
+	newBytes, err := cbor.Marshal(pd)
+	if err != nil {
+		t.Fatalf("couldn't encode: %v", err)
+	}
+	if !bytes.Equal(datumBytes, newBytes) {
+		t.Errorf("failed roundtrip:\n got  %s\n want %s", hex.EncodeToString(newBytes), hex.EncodeToString(datumBytes))
+	}
+}
+
 func TestRoundTripDefiniteDatum(t *testing.T) {
 	var pd PlutusData.PlutusData
 	datumBytes, err := hex.DecodeString("d879844100d87982d87982d87982d87981581c49ce0fc15732f1bb8c9c82f2224329a49cbb41e81c52e8a7fce5cf98d87a80d87a80d87a801a002625a0d87983d879801903e8d879811903e8")

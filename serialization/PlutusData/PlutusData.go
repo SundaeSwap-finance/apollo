@@ -1401,6 +1401,26 @@ func (pd *PlutusData) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// tagHeaderLen returns the number of bytes occupied by a CBOR tag's major
+// type byte plus its argument, based on the additional-info bits in the
+// leading byte. Constructor tags 121-127 fit in a single extra byte (2-byte
+// header), but constructor tags 1280-1400 (alternatives 7-127) need a 2-byte
+// argument (3-byte header) - assuming a fixed 2-byte header corrupts those.
+func tagHeaderLen(b byte) int {
+	switch b & 0x1f {
+	case 24:
+		return 2
+	case 25:
+		return 3
+	case 26:
+		return 5
+	case 27:
+		return 9
+	default:
+		return 1
+	}
+}
+
 func (pd *PlutusData) UnmarshalCBOR(value []uint8) error {
 	var x any
 	err := cbor.Unmarshal(value, &x)
@@ -1413,16 +1433,17 @@ func (pd *PlutusData) UnmarshalCBOR(value []uint8) error {
 		case []interface{}:
 			pd.TagNr = ok.Number
 			pd.PlutusDataType = PlutusArray
-			if value[2] == 0x9f {
+			headerLen := tagHeaderLen(value[0])
+			if value[headerLen] == 0x9f {
 				y := PlutusIndefArray{}
-				err = cbor.Unmarshal(value[2:], &y)
+				err = cbor.Unmarshal(value[headerLen:], &y)
 				if err != nil {
 					return err
 				}
 				pd.Value = y
 			} else {
 				y := PlutusDefArray{}
-				err = cbor.Unmarshal(value[2:], &y)
+				err = cbor.Unmarshal(value[headerLen:], &y)
 				if err != nil {
 					return err
 				}
