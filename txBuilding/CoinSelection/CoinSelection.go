@@ -189,11 +189,12 @@ func _improve(selected []UTxO.UTxO,
 	}
 	var utxo UTxO.UTxO
 	utxo, remaining = _get_next_random(remaining)
-	if math.Abs(float64(_findDiffByFormer(ideal, selectedAmount.Add(utxo.Output.GetValue())))) <
+	nextSelectedAmount := selectedAmount.Add(utxo.Output.GetValue())
+	if math.Abs(float64(_findDiffByFormer(ideal, nextSelectedAmount))) <
 		math.Abs(float64(_findDiffByFormer(ideal, selectedAmount))) &&
-		_findDiffByFormer(upperBound, selectedAmount.Add(utxo.Output.GetValue())) >= 0 {
+		_findDiffByFormer(upperBound, nextSelectedAmount) >= 0 {
 		selected = append(selected, utxo)
-		selectedAmount.Add(utxo.Output.GetValue())
+		selectedAmount = nextSelectedAmount
 	}
 	return _improve(selected, selectedAmount, remaining, ideal, upperBound, maxInputCount)
 }
