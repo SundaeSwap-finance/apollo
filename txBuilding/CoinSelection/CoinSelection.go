@@ -148,10 +148,10 @@ func _get_next_random(remaining []UTxO.UTxO) (UTxO.UTxO, []UTxO.UTxO) {
 	return remaining[idx], remainders
 }
 
-func _randomSelectSubset(amount Value.Value, remaining []UTxO.UTxO, selected []UTxO.UTxO, selectedAmount Value.Value) ([]UTxO.UTxO, Value.Value, error) {
+func _randomSelectSubset(amount Value.Value, remaining []UTxO.UTxO, selected []UTxO.UTxO, selectedAmount Value.Value) ([]UTxO.UTxO, []UTxO.UTxO, Value.Value, error) {
 	for !amount.LessOrEqual(selectedAmount) {
 		if len(remaining) == 0 {
-			return nil, Value.Value{}, &InputUTxoDepletedError{}
+			return nil, nil, Value.Value{}, &InputUTxoDepletedError{}
 		}
 		var toAdd UTxO.UTxO
 		toAdd, remaining = _get_next_random(remaining)
@@ -159,7 +159,7 @@ func _randomSelectSubset(amount Value.Value, remaining []UTxO.UTxO, selected []U
 		selectedAmount = selectedAmount.Add(toAdd.Output.GetValue())
 	}
 
-	return selected, selectedAmount, nil
+	return selected, remaining, selectedAmount, nil
 }
 
 func _findDiffByFormer(ideal Value.Value, actual Value.Value) int {
@@ -180,12 +180,12 @@ func _improve(selected []UTxO.UTxO,
 	remaining []UTxO.UTxO,
 	ideal Value.Value,
 	upperBound Value.Value,
-	maxInputCount int) ([]UTxO.UTxO, Value.Value, error) {
+	maxInputCount int) ([]UTxO.UTxO, []UTxO.UTxO, Value.Value, error) {
 	if len(remaining) == 0 || _findDiffByFormer(ideal, selectedAmount) <= 0 {
-		return selected, selectedAmount, nil
+		return selected, remaining, selectedAmount, nil
 	}
 	if maxInputCount > -1 && len(selected) > maxInputCount {
-		return []UTxO.UTxO{}, Value.Value{}, &MaxInputCountExceededError{maxInputCount}
+		return []UTxO.UTxO{}, remaining, Value.Value{}, &MaxInputCountExceededError{maxInputCount}
 	}
 	var utxo UTxO.UTxO
 	utxo, remaining = _get_next_random(remaining)
@@ -193,7 +193,7 @@ func _improve(selected []UTxO.UTxO,
 		math.Abs(float64(_findDiffByFormer(ideal, selectedAmount))) &&
 		_findDiffByFormer(upperBound, selectedAmount.Add(utxo.Output.GetValue())) >= 0 {
 		selected = append(selected, utxo)
-		selectedAmount.Add(utxo.Output.GetValue())
+		selectedAmount = selectedAmount.Add(utxo.Output.GetValue())
 	}
 	return _improve(selected, selectedAmount, remaining, ideal, upperBound, maxInputCount)
 }
@@ -227,7 +227,7 @@ func (rims RandomImproveMultiAsset) Select(
 	selected := make([]UTxO.UTxO, 0)
 	selectedAmount := Value.Value{}
 	for r := range requestSorted {
-		selected, selectedAmount, err = _randomSelectSubset(requestSorted[r], available, selected, selectedAmount)
+		selected, available, selectedAmount, err = _randomSelectSubset(requestSorted[r], available, selected, selectedAmount)
 		if err != nil {
 			return nil, Value.Value{}, err
 		}
@@ -240,7 +240,7 @@ func (rims RandomImproveMultiAsset) Select(
 	for _, amount := range reverseSorted {
 		ideal := amount.Add(amount)
 		upperBound := ideal.Add(amount)
-		partialSelected, partialAmount, err := _improve(
+		selected, available, selectedAmount, err = _improve(
 			selected,
 			selectedAmount,
 			available,
@@ -251,8 +251,6 @@ func (rims RandomImproveMultiAsset) Select(
 		if err != nil {
 			continue
 		}
-		selectedAmount.Add(partialAmount)
-		selected = append(selected, partialSelected...)
 
 	}
 	if respectMinUtxo {
@@ -274,7 +272,7 @@ func (rims RandomImproveMultiAsset) Select(
 			}
 			for _, utxo := range additional {
 				selected = append(selected, utxo)
-				selectedAmount.Add(utxo.Output.GetValue())
+				selectedAmount = selectedAmount.Add(utxo.Output.GetValue())
 			}
 		}
 	}
