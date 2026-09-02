@@ -366,3 +366,60 @@ func TestMultiAsset(t *testing.T) {
 // 		t.Errorf("Expected request to be fulfilled")
 // 	}
 // }
+
+func TestRandomImproveChangeAccountsForImprovement(t *testing.T) {
+	chain_context := FixedChainContext.InitFixedChainContext()
+	decoded_address, _ := Address.DecodeAddress(TESTADDRESS)
+	selector := CoinSelection.RandomImproveMultiAsset{}
+	mkUtxo := func(index int, lovelace int64) UTxO.UTxO {
+		return UTxO.UTxO{
+			Input:  TransactionInput.TransactionInput{TransactionId: make([]byte, 32), Index: index},
+			Output: TransactionOutput.SimpleTransactionOutput(decoded_address, Value.PureLovelaceValue(lovelace)),
+		}
+	}
+	utxos := []UTxO.UTxO{mkUtxo(0, 5_000_000), mkUtxo(1, 5_000_000)}
+	request := []TransactionOutput.TransactionOutput{
+		TransactionOutput.SimpleTransactionOutput(decoded_address, Value.PureLovelaceValue(5_000_000)),
+	}
+	selected, change, err := selector.Select(utxos, request, chain_context, -1, false, false)
+	if err != nil {
+		t.Fatalf("Expected no error, got %s", err)
+	}
+	if len(selected) != 2 {
+		t.Errorf("Expected 2 utxos after improvement, got %d", len(selected))
+	}
+	seen := map[int]bool{}
+	for _, u := range selected {
+		if seen[u.Input.Index] {
+			t.Errorf("Utxo with index %d selected more than once", u.Input.Index)
+		}
+		seen[u.Input.Index] = true
+	}
+	if change.GetCoin() != int64(5_000_000) {
+		t.Errorf("Expected change of 5_000_000, got %d", change.GetCoin())
+	}
+}
+
+func TestRandomImproveDoesNotReselectSpentUtxos(t *testing.T) {
+	chain_context := FixedChainContext.InitFixedChainContext()
+	decoded_address, _ := Address.DecodeAddress(TESTADDRESS)
+	selector := CoinSelection.RandomImproveMultiAsset{}
+	policy := Policy.PolicyId{Value: "00000000000000000000000000000000000000000000000000000000"}
+	tokenA := AssetName.NewAssetNameFromString("tokenA")
+	tokenB := AssetName.NewAssetNameFromString("tokenB")
+	utxo := UTxO.UTxO{
+		Input: TransactionInput.TransactionInput{TransactionId: make([]byte, 32), Index: 0},
+		Output: TransactionOutput.SimpleTransactionOutput(decoded_address, Value.SimpleValue(2_000_000, MultiAsset.MultiAsset[int64]{
+			policy: {tokenA: 5, tokenB: 1},
+		})),
+	}
+	request := []TransactionOutput.TransactionOutput{
+		TransactionOutput.SimpleTransactionOutput(decoded_address, Value.SimpleValue(2_000_000, MultiAsset.MultiAsset[int64]{
+			policy: {tokenA: 1, tokenB: 2},
+		})),
+	}
+	selected, _, err := selector.Select([]UTxO.UTxO{utxo}, request, chain_context, -1, false, false)
+	if err == nil {
+		t.Fatalf("Expected insufficient-input error, got success with %d utxos (duplicates possible)", len(selected))
+	}
+}
