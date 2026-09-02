@@ -831,6 +831,9 @@ func (b *Apollo) addChangeAndFee() (*Apollo, error) {
 		b.Context,
 	) {
 		sortedUtxos := SortUtxos(b.getAvailableUtxos())
+		if len(sortedUtxos) == 0 {
+			return b, errors.New("not enough funds to cover min utxo and fee")
+		}
 		b.preselectedUtxos = append(b.preselectedUtxos, sortedUtxos[0])
 		b.usedUtxos[sortedUtxos[0].GetKey()] = true
 		return b.addChangeAndFee()
@@ -847,7 +850,19 @@ func (b *Apollo) addChangeAndFee() (*Apollo, error) {
 		}
 		if newestFee > b.Fee {
 			difference := newestFee - b.Fee
-			adjustedPayments[len(adjustedPayments)-1].Lovelace -= int(difference)
+			lastIdx := len(adjustedPayments) - 1
+			minLovelace := int(Utils.MinLovelacePostAlonzo(
+				*adjustedPayments[lastIdx].ToTxOut(), b.Context))
+			if adjustedPayments[lastIdx].Lovelace-int(difference) < minLovelace {
+				sortedUtxos := SortUtxos(b.getAvailableUtxos())
+				if len(sortedUtxos) == 0 {
+					return b, errors.New("not enough funds to cover fee adjustment")
+				}
+				b.preselectedUtxos = append(b.preselectedUtxos, sortedUtxos[0])
+				b.usedUtxos[sortedUtxos[0].GetKey()] = true
+				return b.addChangeAndFee()
+			}
+			adjustedPayments[lastIdx].Lovelace -= int(difference)
 			b.Fee = newestFee
 			b.payments = pp
 			for _, payment := range adjustedPayments {
@@ -881,6 +896,17 @@ func (b *Apollo) addChangeAndFee() (*Apollo, error) {
 		}
 		if newestFee > b.Fee {
 			difference := newestFee - b.Fee
+			minLovelace := int(Utils.MinLovelacePostAlonzo(
+				*payment.ToTxOut(), b.Context))
+			if payment.Lovelace-int(difference) < minLovelace {
+				sortedUtxos := SortUtxos(b.getAvailableUtxos())
+				if len(sortedUtxos) == 0 {
+					return b, errors.New("not enough funds to cover fee adjustment")
+				}
+				b.preselectedUtxos = append(b.preselectedUtxos, sortedUtxos[0])
+				b.usedUtxos[sortedUtxos[0].GetKey()] = true
+				return b.addChangeAndFee()
+			}
 			payment.Lovelace -= int(difference)
 			b.payments = append(pp, &payment)
 			b.Fee = newestFee
